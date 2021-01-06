@@ -14,7 +14,7 @@ db = sqlite3.connect("p0database.db")
 c = db.cursor()
 #c.execute('DROP TABLE IF EXISTS stories') #for changing columns
 #c.execute('DROP TABLE IF EXISTS users') #for changing columns
-c.execute("""CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, user_id text, username text, password text, contributions text)""")
+c.execute("""CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, username text, password text, contributions text)""")
 c.execute("""CREATE TABLE IF NOT EXISTS stories (id INTEGER PRIMARY KEY, title text, entire text, recent text, contributors text)""")
 db.commit()
 db.close()
@@ -24,63 +24,57 @@ app.secret_key = os.urandom(32) #need this, if we didn't include this it would p
 
 
 #Checks if user is in session
-@app.route("/") #methods=['GET', 'POST']
+@app.route("/", methods = ['GET', 'POST']) #methods=['GET', 'POST']
 def disp_loginpage():
-    if 'username' in session:
-        return render_template('homepage.html', user = username_homepage)
+    if "user" in session:
+        return render_template('homepage.html', user = session["user"])
     else:
         return render_template('login.html')
 
 #Routes user to registration page
-@app.route("/register")
+@app.route("/register", methods = ['GET', 'POST'])
 def register():
     return render_template('register.html')
 
 #Registration for new user, stores user info into users db
-@app.route("/register_auth")
+@app.route("/register_auth", methods = ['GET', 'POST'])
 def registerConfirming():
+    #establishes new connection with database
     db = sqlite3.connect("p0database.db")
     c2 = db.cursor()
-    usernames_list = "SELECT usernames FROM users;"
-    u = request.args['new_username']
-    p = request.args['new_password_1']
-    p1 = request.args['new_password_2']
+   
+    #gets all the data from the register.html form to check if they exist/match
+    u = request.form['new_username']
+    p = request.form['new_password_1']
+    p1 = request.form['new_password_2']
     c = ''
-    id_list = []
-    for x in c2.execute("SELECT user_id FROM users"):
-        for b in x:
-            id_list.append(b)
-    if len(id_list) == 0:
-        i = 0
-    else:
-        i = int(id_list[-1]) + 1
 
+    #Gets a list of all the registered usernames to check later on
+    usernames_list = [] 
+    for x in c2.execute("SELECT username FROM users;"):
+        usernames_list.append(x[0])
 
-    #print(i)
-
+    #Firsts check if the passwords match
     if p != p1:
         return render_template('invalid_register.html', error_type = "Passwords do not match, try again")
+    #Then checks if the username exists
     elif u in usernames_list:
         return render_template('invalid_register.html', error_type = "Username already exists, try again")
+    #If both pass, it adds the newly registered user and directs the user to the login page
     else:
         c1 = db.cursor()
-        c1.execute("INSERT INTO users (user_id, username, password, contributions) VALUES (?, ?, ?, ?)", (i, u, p, c))
+        c1.execute("INSERT INTO users (username, password, contributions) VALUES (?, ?, ?)", (u, p, c))
         db.commit()
-        print("testing register")
         return render_template("login.html", error_type = "Please login with your new account")
 db.close()
 
 #Checks credentials of login attempt
-@app.route("/auth") # methods=['GET', 'POST']
+@app.route("/auth", methods = ['GET', 'POST']) # methods=['GET', 'POST']
 def welcome():
     db = sqlite3.connect("p0database.db")
     c2 = db.cursor()
-    username = request.args['username']
-    password = request.args['password']
-
-    #establishes the username so we can use it in other areas when we redirect to homepage
-    global username_homepage
-    username_homepage = username
+    username = request.form['username']
+    password = request.form['password']
 
     u_list = []
     for x in c2.execute("SELECT username FROM users"):
@@ -93,10 +87,9 @@ def welcome():
 
     if username in u_list:
         if password in p_list:
-            session["username"] = username
+            session["user"] = username
             global i
             i = u_list.index(username)
-            #print(str(i) + " HERE IS THE user_id")
             return render_template('homepage.html', user = username)
     else:
         return render_template('login.html', error_type = "Invalid login attempt, try again")
@@ -104,73 +97,69 @@ def welcome():
 db.close()
 
 #Displays homepage when successful login
-@app.route("/homepage")
+@app.route("/homepage", methods = ['GET', 'POST'])
 def returnHome():
-    return render_template('homepage.html', user = username_homepage)
+    return render_template('homepage.html', user = session["user"])
 
 #Asks user for a title for a new story
-@app.route("/create_story")
+@app.route("/create_story", methods = ['GET', 'POST'])
 def title_maker():
     print(str(i) + "HEREIS THE USER_id")
     return render_template('story_creation.html', titleExists = 0)
 
-#make story
-@app.route("/story_check")
+#Allows the user to make their own story. (Includes story details & title)
+@app.route("/story_check", methods = ['GET', 'POST'])
 def story_check():
-    title = request.args['temp-title']
-    orig_story = request.args['story']
-    user = i
+    #Info from the html file
+    title = request.form['temp-title']
+    orig_story = request.form['story']
+    username = session["user"]
+
+    #Declares lists used to store information gathered from the sqlite database
+    userConts = []
     title_list = []
+    userList = []
+
+    #Establishing a connection & Cursor with the Sqlite database
     db = sqlite3.connect("p0database.db")
     c3 = db.cursor()
-    userConts = []
 
+    #To make sure the user title doesn't contain bad spacing before & after the Title
+    title = title.strip()
+
+    #Gets the User's index so it can get their contributions
+    for x in c3.execute("SELECT username FROM users"):
+        userList.append(x[0])
+    user_index = userList.index(username)
+
+    #Fills in the title_list with all the titles that currently exist
     for x in c3.execute("SELECT title FROM stories"):
         for y in x:
             title_list.append(y.lower())
+
+    #Checks if title already exists, decided to use the .lower to make case sensitive but same titles not work
     if (title.lower() in title_list):
-        return render_template('story_creation.html', titleExists = 1, story = orig_story )
+            return render_template('story_creation.html', titleExists = 1, story = orig_story )
     else:
-        c3.execute("INSERT INTO stories (title, entire, recent, contributors) VALUES (?, ?, ?, ?)", (title+ " " , orig_story, orig_story, user))
+        c3.execute("INSERT INTO stories (title, entire, recent, contributors) VALUES (?, ?, ?, ?)", (title , orig_story, orig_story, username + ","))
+        #gets a list of all the user contributions
         for x in c3.execute("SELECT contributions FROM users"):
             for y in x:
                 userConts.append(y)
-        updatedUserConts = userConts[user] + title + " "
-        c3.execute("UPDATE users SET contributions = ? WHERE user_id = ?", (updatedUserConts,user))
+
+        #String with the user contributions of a specific person separated by ~ since we figure it was the least used symbol
+        updatedUserConts = userConts[user_index] + title + "~"
+
+        #Updates the database with new data
+        c3.execute("UPDATE users SET contributions = ? WHERE username = ?", (updatedUserConts, username))
         db.commit()
         return render_template('story_view.html', story = orig_story, title = title)
 db.close()
 
-# #Checks to see if the title exists
-# @app.route("/title-check")
-# def title_Check():
-#     title = request.args['temp-title']
-    
-#     db = sqlite3.connect("p0database.db")
-#     c3 = db.cursor()
-#     if ("SELECT LOCATE(title, titles) FROM stories;") == 0:
-#         return render_template('story_creation.html', story_error = "Title Already Exists")
-#     else:
-#         return render_template('story_creation.html', title = title)
-# db.close()
-
-
-
-# #Creates story and adds it to the database
-# @app.route("/create_story")
-# def story_add():
-#     db = sqlite3.connect("p0database.db")
-#     c4 = db.cursor()
-#     orig_story = request.args['story']
-#     c4.execute("INSERT INTO stories (title, entire, recent) VALUES (?, ?, ?)", (title, orig_story, orig_story))
-#     c4.execute("INSERT INTO users (contributions) VALUES (?)", (title))
-#     return render_template('display_recent.html')
-# db.close()
-
 #Displays login page and removes user from session
-@app.route("/logout")
+@app.route("/logout", methods = ['GET', 'POST'])
 def logout():
-    session.pop('username', None) #removes the session
+    session.pop("user", None) #removes the session
     return render_template('login.html')
 
 
