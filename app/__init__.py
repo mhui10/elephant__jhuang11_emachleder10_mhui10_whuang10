@@ -56,10 +56,10 @@ def registerConfirming():
 
     #Firsts check if the passwords match
     if p != p1:
-        return render_template('invalid_register.html', error_type = "Passwords do not match, try again")
+        return render_template('register.html', error_type = "Passwords do not match, try again")
     #Then checks if the username exists
     elif u in usernames_list:
-        return render_template('invalid_register.html', error_type = "Username already exists, try again")
+        return render_template('register.html', error_type = "Username already exists, try again")
     #If both pass, it adds the newly registered user and directs the user to the login page
     else:
         c1 = db.cursor()
@@ -85,26 +85,50 @@ def welcome():
         for b in a:
             p_list.append(b)
 
+    usersContributions = []
+    user_index = u_list.index(username)
+
+    for x in c2.execute("SELECT contributions FROM users"):
+        usersContributions.append(x[0])
+
+    user_conts = usersContributions[user_index].split("~")
+    if (len(user_conts) >= 1):
+        user_conts.pop()
+
     if username in u_list:
         if password in p_list:
             session["user"] = username
-            global i
-            i = u_list.index(username)
-            return render_template('homepage.html', user = username)
+            return render_template('homepage.html', user = username, contribution_list = user_conts)
     else:
         return render_template('login.html', error_type = "Invalid login attempt, try again")
-    return render_template ('homepage.html')  #response to a form submission
+    #return render_template ('homepage.html', user = username, contribution_list = user_conts)  #response to a form submission
 db.close()
 
 #Displays homepage when successful login
 @app.route("/homepage", methods = ['GET', 'POST'])
 def returnHome():
-    return render_template('homepage.html', user = session["user"])
+    db = sqlite3.connect("p0database.db")
+    c4 = db.cursor()
+
+    usersContributions = []
+    userList = []
+    for x in c4.execute("SELECT username FROM users"):
+        userList.append(x[0])
+    user_index = userList.index(session["user"])
+
+    for x in c4.execute("SELECT contributions FROM users"):
+        usersContributions.append(x[0])
+
+    user_conts = usersContributions[user_index].split("~")
+    if (len(user_conts) >= 1):
+        user_conts.pop()
+        
+    return render_template('homepage.html', user = session["user"], contribution_list = user_conts)
+db.close()
 
 #Asks user for a title for a new story
 @app.route("/create_story", methods = ['GET', 'POST'])
 def title_maker():
-    print(str(i) + "HEREIS THE USER_id")
     return render_template('story_creation.html', titleExists = 0)
 
 #Allows the user to make their own story. (Includes story details & title)
@@ -154,6 +178,27 @@ def story_check():
         c3.execute("UPDATE users SET contributions = ? WHERE username = ?", (updatedUserConts, username))
         db.commit()
         return render_template('story_view.html', story = orig_story, title = title)
+db.close()
+
+@app.route("/story_view", methods = ['GET', 'POST'])
+def displayStory():
+
+    title = request.form['title']
+    title_list = []
+    story_list = []
+
+    db = sqlite3.connect("p0database.db")
+    c5 = db.cursor()
+
+    for x in c5.execute("SELECT title FROM stories"):
+        title_list.append(x[0])
+
+    for x in c5.execute("SELECT entire FROM stories"):
+        story_list.append(x[0])
+
+    story_index = title_list.index(title)
+
+    return render_template('story_view.html', story = story_list[story_index], title = title)
 db.close()
 
 #Displays login page and removes user from session
